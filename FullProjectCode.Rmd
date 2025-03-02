@@ -1,0 +1,164 @@
+---
+title: "project final copy"
+author: "Amelie Devine"
+date: "2023-12-07"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r}
+library(olsrr)
+library(readxl)
+
+data_win = read_excel("proj_data_win.xlsx", na="-99")
+data=data_win
+```
+
+```{r}
+summary(data)
+pairs(data)
+```
+
+```{r}
+fit = lm(MBB_Win_Perc~., data=data)
+summary(fit)
+anova(fit)
+```
+
+
+```{r}
+fit_best = ols_step_best_subset(lm(MBB_Win_Perc~., data=data))
+final = data.frame(x=fit_best$predictors, r2=fit_best$rsquare, adjr2 = fit_best$adjr,
+                   AIC=fit_best$aic, BIC=fit_best$sbc, r2press=fit_best$predrsq, Cp=fit_best$cp)
+final
+```
+Best $R^{2}$: model 8 & 9 (highest)
+Best $R^{2}_{adj}$: model 1 (highest)
+Best $R^{2}_{press}$: model 1 (highest)
+Best $C_{p}$: model 8 (closest to k+1)
+Best AIC: model 1 (lowest)
+Best BIC: model 1 (lowest)
+
+We choose model 1 as our best model because it fits 4/6 optimality criterion.
+
+```{r}
+fit_step = ols_step_both_p(lm(MBB_Win_Perc~., data=data), prem=0.30, pent=0.15, details=T)
+```
+Stepwise selection chose model 1
+
+```{r}
+fit_back = ols_step_backward_p(lm(MBB_Win_Perc~., data=data),prem=0.15, details=T)
+```
+Backward Regression chose Model 1
+
+#New Model
+```{r}
+new_fit = lm(MBB_Win_Perc~MBB_Rev, data=data)
+summary(new_fit)
+anova(new_fit)
+```
+#Hypothesis Test on Full vs Reduced Model
+$H_{0}$: Reduced model is adequate.
+$H_{a}$: Full model is adequate.
+```{r}
+test_F = ((2.2458-1.988)/8)/(1.988/(96-10))
+crit_F = qf(0.05,8,86,lower.tail=F)
+```
+F test statistic 1.394 < F critical value 2.048 so we fail to reject the null hypothesis. We do not have evidence to show the full model is adequate. 
+
+#Hypothesis Test for Significance of Estimates
+$H_{0}$: $B_{j}$ = 0; the $j^{th}$ predictor is not significant.
+$H_{a}$: $B_{j} \neq$ 0; the $j^{th}$ predictor is significant.
+Predictor MBB_Rev has a p-value of 0.00144, so we reject $H_{0}$ and find that it is a significant predictor of men's basketball winning percentage.
+
+#Predict using NOVA!
+```{r}
+test = data.frame(MBB_Rev=20.513366)
+predict(new_fit, test)
+```
+Prediction was 63.38%, actual was 78.95% (19.7% error)
+
+#Confidence Interval
+```{r}
+predict(new_fit, test, interval='confidence')
+```
+
+
+#Prediction Interval
+```{r}
+predict(new_fit, test, interval='prediction')
+```
+
+## CHECKING ASSUMPTIONS ##
+
+#Linearity
+```{r}
+ei = new_fit$residuals
+plot(data$MBB_Rev, ei, xlab='MBB Revenue', ylab='Residuals')
+```
+No obvious systematic pattern
+
+#Equal Variances
+```{r}
+plot(new_fit$fitted.values, ei, xlab='Fitted Values', ylab='Residuals')
+```
+no systematic pattern!
+
+#Normality
+```{r}
+qqnorm(ei)
+qqline(ei, col='purple')
+shapiro.test(ei)
+```
+normality satisfied: fit relatively close to line, but Wilk-Shapiro has high p-value
+
+#Outliers
+```{r}
+plot(rstandard(new_fit), ylim=c(-3,3)) 
+abline(h=c(-2,2), col='green')
+rstandard(new_fit)
+```
+3 outliers: 32, 63, 75
+
+#Influential Points
+```{r}
+bm = 2*(2/96) ## about 0.0417
+plot(hatvalues(new_fit), ylab='Hat Values')
+abline(h=bm, col='pink')
+hatvalues(new_fit)
+```
+
+#Remove 15 - high influence point
+```{r}
+data_2 <- data[-c(15),]
+new_fit_2 = lm(MBB_Win_Perc~MBB_Rev, data=data_2)
+summary(new_fit_2)
+```
+#Recheck influential points
+```{r}
+bm2 = 2*(2/95) ## about 0.0421
+plot(hatvalues(new_fit_2), ylab='Hat Values')
+abline(h=bm, col='pink')
+hatvalues(new_fit_2)
+```
+high influence points: 13, 14, 47, 48, 49
+
+#Remove influence points and recheck again!
+```{r}
+data_3 <- data_2[-c(13,14,47,48,49),]
+new_fit_3 = lm(MBB_Win_Perc~MBB_Rev, data=data_3)
+
+bm3 = 2*(2/90) ## about 0.0444
+plot(hatvalues(new_fit_3), ylab='Hat Values')
+abline(h=bm, col='pink')
+```
+
+#Compare first reduced model & model without 6 influential points
+```{r}
+summary(new_fit)
+summary(new_fit_2)
+summary(new_fit_3)
+```
+fit1 and fit2 very similar, fit3 differ slightly, but not a ton and both (slope & intercept) still significant
+
